@@ -1,10 +1,24 @@
 [tools]
 actionlint = "1.7.12"
 prek = "0.4.12"
-uv = "0.12.2"
+uv = "0.12.3"
 
 [env]
 ZENSICAL_VERSION = "0.0.54"
+
+[hooks]
+enter = [
+    "command -v prek >/dev/null || prek install --force",
+]
+
+[tasks."update"]
+description = "Update dependencies and regenerate lockfiles"
+run = [
+    "mise upgrade --local --bump",
+    "mise lock",
+    "prek auto-update --refresh",
+    "prek run --all-files",
+]
 
 [tasks."docs:serve"]
 description = "Preview the documentation at localhost:8000"
