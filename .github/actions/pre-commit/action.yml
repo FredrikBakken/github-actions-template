@@ -1,0 +1,47 @@
+name: "Pre-commit"
+description: "Run pre-commit hooks, preferring prek over pre-commit when both are available."
+
+inputs:
+  working-directory:
+    description: "Directory containing the hook config (prek.toml or .pre-commit-config.yaml), relative to the workspace."
+    required: false
+    default: "."
+  all-files:
+    description: "Run against every file in the repo rather than only staged files."
+    required: false
+    default: "false"
+  hooks:
+    description: >-
+      Optional whitespace-separated list of hook ids to run. Leave empty to run
+      every configured hook — preferred, because an explicit list silently
+      drifts as the config changes. To exclude a few hooks, use `skip` instead.
+    required: false
+    default: ""
+  skip:
+    description: >-
+      Comma-separated hook ids to skip, passed to the runner as the SKIP
+      environment variable. Use this for hooks whose tooling this job does not
+      install.
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Cache hook environments"
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: |
+          ~/.cache/prek
+          ~/.cache/pre-commit
+        key: ${{ runner.os }}-pre-commit-${{ hashFiles(format('{0}/prek.toml', inputs.working-directory), format('{0}/.pre-commit-config.yaml', inputs.working-directory), format('{0}/.pre-commit-config.yml', inputs.working-directory)) }}
+        restore-keys: ${{ runner.os }}-pre-commit-
+
+    - name: "Run pre-commit hooks"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ALL_FILES: "${{ inputs.all-files }}"
+        HOOKS: "${{ inputs.hooks }}"
+        SKIP: "${{ inputs.skip }}"
+      run: "${{ github.action_path }}/pre-commit.sh"

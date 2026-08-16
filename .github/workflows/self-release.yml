@@ -1,0 +1,122 @@
+name: "Release"
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+# Releases must not race each other: mike rewrites versions.json on gh-pages,
+# so two concurrent deploys would clobber one another.
+concurrency:
+  group: "${{ github.workflow }}"
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: "Compute version"
+    runs-on: ubuntu-latest
+    outputs:
+      version: "${{ steps.semver.outputs.version }}"
+      version_tag: "${{ steps.semver.outputs.version_tag }}"
+      release: "${{ steps.semver.outputs.version_type != 'none' && steps.semver.outputs.is_tagged == 'false' }}"
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # The action derives the version from commit history since the last tag.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: "Compute semantic version"
+        id: semver
+        uses: PaulHatch/semantic-version@502226b17e3e242e4befd0a45690fcbb27dd1373  # v6.0.3
+        with:
+          # The v6 defaults already match Conventional Commits. This additionally
+          # picks up `BREAKING CHANGE:` footers, which live in the commit body
+          # and are otherwise missed.
+          search_commit_body: true
+
+  release:
+    name: "Tag and release"
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # `gh release create` creates the tag at --target itself, so there is no
+      # separate tag push and no need for persisted git credentials.
+      - name: "Create release"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          TAG: "${{ needs.version.outputs.version_tag }}"
+        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+
+  docs:
+    name: "Publish documentation"
+    needs:
+      - version
+      - release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      # Installs actdocs, jq, prek and uv. uvx provisions Python on demand, so
+      # there is no actions/setup-python step.
+      - name: "Install pinned tools"
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654  # v4.2.4
+
+      # Stamps the real SHA and tag into the usage snippets. The committed docs
+      # keep `<sha>`/`<version>` placeholders so the pre-commit hook stays
+      # deterministic; only the published site gets concrete values.
+      # `|| true` because the hook reports "files were modified", which is
+      # exactly what we want here.
+      - name: "Regenerate documentation"
+        env:
+          ACTDOCS_REPO_SLUG: "${{ github.repository }}"
+          ACTDOCS_REF_SHA: "${{ github.sha }}"
+          ACTDOCS_REF_VERSION: "${{ needs.version.outputs.version_tag }}"
+        run: prek run --all-files actdocs || true
+
+      - name: "Configure git identity"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # mike never fetches on its own, and the branch does not exist on the very
+      # first run.
+      - name: "Fetch gh-pages"
+        run: git fetch origin gh-pages --depth=1 || true
+
+      - name: "Deploy documentation"
+        env:
+          VERSION: "${{ needs.version.outputs.version }}"
+          # Zensical does not support uv's symlink install mode. Belt and
+          # braces: hardlink is already uv's default on Linux.
+          UV_LINK_MODE: copy
+        run: |
+          # uvx resolves --from and --with into one environment and prepends its
+          # bin to PATH, so mike can find the `zensical` binary it shells out to.
+          mike() {
+            uvx --python 3.13 \
+              --with "zensical==0.0.53" \
+              --from "git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac" \
+              mike "$@"
+          }
+          mike deploy --push --update-aliases --alias-type=copy "$VERSION" latest
+          mike set-default --push --alias-type=copy latest

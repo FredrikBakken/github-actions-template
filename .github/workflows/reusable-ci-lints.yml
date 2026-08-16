@@ -1,0 +1,134 @@
+name: "Reusable CI Lints"
+
+# The repository lint gate as one callable job: a Conventional Commits check on
+# the pull-request title, followed by the pre-commit/prek hooks.
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner label the job executes on."
+        required: false
+        type: string
+        default: "ubuntu-latest"
+      ref:
+        description: "Ref to check out. Empty checks out the ref that triggered the calling workflow."
+        required: false
+        type: string
+        default: ""
+      fetch-depth:
+        description: "Number of commits to fetch. 0 fetches the full history, which hooks that diff against a base branch need."
+        required: false
+        type: number
+        default: 0
+      install-tools:
+        description: "Install the tools pinned in the caller's mise.toml or .tool-versions. Disable when prek or pre-commit reaches PATH some other way."
+        required: false
+        type: boolean
+        default: true
+      working-directory:
+        description: "Directory containing the hook config (prek.toml or .pre-commit-config.yaml), relative to the workspace."
+        required: false
+        type: string
+        default: "."
+      all-files:
+        description: "Run against every file in the repo. Defaults to true because a CI checkout has nothing staged to run against."
+        required: false
+        type: boolean
+        default: true
+      hooks:
+        description: >-
+          Optional whitespace-separated list of hook ids to run. Leave empty to
+          run every configured hook — preferred, because an explicit list
+          silently drifts as the config changes. To exclude a few hooks, use
+          `skip` instead.
+        required: false
+        type: string
+        default: ""
+      skip:
+        description: "Comma-separated hook ids to skip. Use this for hooks whose tooling this job does not install."
+        required: false
+        type: string
+        default: ""
+      validate-pr-title:
+        description: "Check the pull-request title against the Conventional Commits standard. Ignored on events other than pull_request."
+        required: false
+        type: boolean
+        default: true
+      pr-title:
+        description: "Title to validate. Empty uses the title of the pull request that triggered the calling workflow."
+        required: false
+        type: string
+        default: ""
+      pr-title-types:
+        description: "Comma-separated list of allowed Conventional Commit types."
+        required: false
+        type: string
+        default: "feat,fix,docs,style,refactor,test,chore"
+      pr-title-max-length:
+        description: "Maximum length of the pull-request title."
+        required: false
+        type: number
+        default: 72
+      actions-repository:
+        description: "Repository holding the composite actions. Empty resolves to the repository this workflow lives in."
+        required: false
+        type: string
+        default: ""
+      actions-ref:
+        description: "Ref of actions-repository to check out. Empty resolves to the commit of this workflow file, keeping the actions in lockstep with it."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  lints:
+    name: "Run lints"
+    runs-on: "${{ inputs.runs-on }}"
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: "${{ inputs.ref }}"
+          fetch-depth: "${{ inputs.fetch-depth }}"
+          persist-credentials: false
+
+      # `uses: ./…` inside a reusable workflow resolves against the *caller's*
+      # checkout, so the composite actions have to be fetched by hand. The
+      # `job.workflow_*` context names this file's own repository and commit,
+      # which keeps the actions on exactly the ref the caller pinned. Those
+      # properties are unset on GitHub Enterprise Server — set the `actions-*`
+      # inputs there.
+      - name: "Checkout actions"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: "${{ inputs.actions-repository || job.workflow_repository }}"
+          ref: "${{ inputs.actions-ref || job.workflow_sha }}"
+          # Nested and untracked, so `--all-files` — which asks git for the file
+          # list — never picks these files up as the caller's own.
+          path: ".github-actions-template"
+          persist-credentials: false
+
+      - name: "Install pinned tools"
+        if: inputs.install-tools
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654  # v4.2.4
+
+      # Callers need `edited` among their `pull_request` trigger types, or a
+      # renamed pull request keeps the verdict of its original title.
+      - name: "Validate PR title"
+        if: inputs.validate-pr-title && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+        uses: ./.github-actions-template/.github/actions/validate-pr-title
+        with:
+          pr-title: "${{ inputs.pr-title || github.event.pull_request.title }}"
+          types: "${{ inputs.pr-title-types }}"
+          max-length: "${{ inputs.pr-title-max-length }}"
+
+      - name: "Run pre-commit hooks"
+        uses: ./.github-actions-template/.github/actions/pre-commit
+        with:
+          working-directory: "${{ inputs.working-directory }}"
+          all-files: "${{ inputs.all-files }}"
+          hooks: "${{ inputs.hooks }}"
+          skip: "${{ inputs.skip }}"

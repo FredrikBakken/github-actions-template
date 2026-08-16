@@ -1,0 +1,6 @@
+# .actdocs.toml
+docs-dir-target = "docs"
+index-target = "README.md"
+workflow-docs = "docs-dir"
+repo-slug = "FredrikBakken/github-actions-template"
+pin = "sha"

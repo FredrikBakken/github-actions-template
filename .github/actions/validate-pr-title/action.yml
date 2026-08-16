@@ -1,0 +1,26 @@
+name: "Validate PR Title"
+description: "Validates that a pull-request title follows the Conventional Commits standard."
+
+inputs:
+  pr-title:
+    description: "The pull-request title to validate."
+    required: true
+  types:
+    description: "A comma-separated list of allowed types."
+    required: false
+    default: "feat,fix,docs,style,refactor,test,chore"
+  max-length:
+    description: "The maximum length of the title."
+    required: false
+    default: 72
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Validate PR Title"
+      shell: bash
+      env:
+        PR_TITLE: "${{ inputs.pr-title }}"
+        TYPES: "${{ inputs.types }}"
+        MAX_LENGTH: "${{ inputs.max-length }}"
+      run: "${{ github.action_path }}/validate-pr-title.sh"

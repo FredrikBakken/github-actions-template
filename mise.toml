@@ -1,0 +1,4 @@
+[tools]
+actionlint = "1.7.12"
+prek = "0.4.12"
+uv = "0.12.2"

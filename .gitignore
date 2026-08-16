@@ -1,0 +1,6 @@
+# prek usage
+.cache/
+.rumdl_cache/
+
+# Generated site docs
+site/
