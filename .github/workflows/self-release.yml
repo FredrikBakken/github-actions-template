@@ -119,4 +119,4 @@ jobs:
               mike "$@"
           }
           mike deploy --push --update-aliases --alias-type=copy "$VERSION" latest
-          mike set-default --push --alias-type=copy latest
+          mike set-default --push latest
