@@ -54,3 +54,6 @@ jobs:
         with:
           working-directory: "."
           all-files: "true"
+          # Meaningless in CI, and would fail outright on push-to-main runs,
+          # where checkout leaves us on a real `main` branch.
+          skip: "no-commit-to-branch"
