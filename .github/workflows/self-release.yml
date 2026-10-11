@@ -32,7 +32,7 @@ jobs:
 
       - name: "Compute semantic version"
         id: semver
-        uses: PaulHatch/semantic-version@502226b17e3e242e4befd0a45690fcbb27dd1373  # v6.0.3
+        uses: PaulHatch/semantic-version@4d6da96a9bc3116da3613309a11ff75fba58eb8d  # v6.0.4
         with:
           # The v6 defaults already match Conventional Commits. This additionally
           # picks up `BREAKING CHANGE:` footers, which live in the commit body
@@ -79,7 +79,7 @@ jobs:
       # Installs actdocs, jq, prek and uv. uvx provisions Python on demand, so
       # there is no actions/setup-python step.
       - name: "Install pinned tools"
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492  # v5.0.1
 
       # Stamps the real SHA and tag into the usage snippets. The committed docs
       # keep `<sha>`/`<version>` placeholders so the pre-commit hook stays
